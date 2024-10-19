@@ -4,16 +4,15 @@ This repo contains the evaluation framework for the paper: [VisualWebBench: How 
 
 [**🌐 Homepage**](https://visualwebbench.github.io/) | [**🤗 Dataset**](https://huggingface.co/datasets/visualwebbench/VisualWebBench) | [**📖 arXiv**](https://arxiv.org/abs/2404.05955)
 
+## Update
+* [2024/10/18]: We introduce [**🤗 MultiUI**](https://huggingface.co/datasets/neulab/MultiUI), 7.3M general multimodal instructions synthesized from webUIs using text-based LLMs, enhancing both UI-related and Doc/OCR/chart understanding tasks.
+* [2024/4/17]: Update results of Gemini 1.5 Pro
 
 ## Introduction
 
 We introduce **VisualWebBench**, a multimodal benchmark designed to assess the **understanding and grounding capabilities of MLLMs in web scenarios**. VisualWebBench consists of **seven tasks**, and comprises **1.5K** human-curated instances from **139** real websites, covering 87 sub-domains. We evaluate 14 open-source MLLMs, Gemini Pro, Claude 3, and GPT-4V(ision) on VisualWebBench, revealing significant challenges and performance gaps. Further analysis highlights the limitations of current MLLMs, including inadequate grounding in text-rich environments and subpar performance with low-resolution image inputs. We believe VisualWebBench will serve as a valuable resource for the research community and contribute to the creation of more powerful and versatile MLLMs for web-related applications.
 
 ![Alt text](assets/main.png)
-
-## Update
-* [2024/4/17]: Update results of Gemini 1.5 Pro
-
 
 ## Benchmark Construction
 We introduce VisualWebBench, a comprehensive multimodal benchmark designed to assess the capabilities of MLLMs in the web domain. Inspired by the human interaction process with web browsers, VisualWebBench consists of seven tasks that map to core abilities required for web tasks: captioning, webpage QA, heading OCR, element OCR, element grounding, action prediction, and action grounding, as detailed in the figure. The benchmark comprises 1.5K instances, all uniformly formulated in the QA style, making it easy to evaluate and compare the performance of different MLLMs.
