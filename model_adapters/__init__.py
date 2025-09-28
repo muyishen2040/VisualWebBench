@@ -3,4 +3,6 @@ from .openai_adapter import OpenAIAdapter
 from .gemini_adapter import GeminiAdapter
 from .claude_adapter import ClaudeAdapter
 from .qwen_vl_adapter import QwenVLAdapter
-from .llava_adapter import LlavaAdapter
+# from .llava_adapter import LlavaAdapter
+from .qwen_hf_vl_adapter import QwenHFVLAdapter
+from .blip2_adapter import Blip2Adapter

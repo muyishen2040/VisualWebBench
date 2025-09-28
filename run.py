@@ -120,18 +120,76 @@ def main(args):
         model_adapter = getattr(model_adapters, model_config['model_adapter'])(
             model, tokenizer, context_len, image_processor, model_config['conv_mode']
         )
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(
-            tokenizer_path, 
-            trust_remote_code=True
-        )
-        model = AutoModelForCausalLM.from_pretrained(
+    elif "blip2" in model_name:
+        from transformers import Blip2Processor, Blip2ForConditionalGeneration
+        processor = Blip2Processor.from_pretrained(model_path)
+        model = Blip2ForConditionalGeneration.from_pretrained(
             model_path,
             device_map=device,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True,
+            torch_dtype=torch.float16,
         )
-        model_adapter = getattr(model_adapters, model_config['model_adapter'])(model, tokenizer)
+        model_adapter = getattr(model_adapters, model_config['model_adapter'])(model, processor, **model_config)
+
+    else:
+        from transformers import AutoConfig, AutoProcessor, AutoTokenizer
+
+        torch_dtype = torch.bfloat16
+        try:
+            # Try multimodal (AutoProcessor)
+            processor = AutoProcessor.from_pretrained(
+                tokenizer_path,
+                trust_remote_code=True
+            )
+            # Load config with override (forces eager attention)
+            config = AutoConfig.from_pretrained(
+                model_path,
+                trust_remote_code=True,
+                attn_implementation="sdpa",   # 👈 override here
+            )
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path,
+                config=config,                 # 👈 pass config explicitly
+                device_map=device,
+                torch_dtype=torch_dtype,
+                trust_remote_code=True,
+            )
+            model_adapter = getattr(model_adapters, model_config['model_adapter'])(
+                model, processor, **model_config
+            )
+        except Exception:
+            # Fall back to text-only (AutoTokenizer)
+            tokenizer = AutoTokenizer.from_pretrained(
+                tokenizer_path,
+                trust_remote_code=True
+            )
+            config = AutoConfig.from_pretrained(
+                model_path,
+                trust_remote_code=True,
+                attn_implementation="sdpa",   # 👈 also override here
+            )
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path,
+                config=config,
+                device_map=device,
+                torch_dtype=torch_dtype,
+                trust_remote_code=True,
+            )
+            model_adapter = getattr(model_adapters, model_config['model_adapter'])(
+                model, tokenizer
+            )
+
+    # else:
+    #     tokenizer = AutoTokenizer.from_pretrained(
+    #         tokenizer_path, 
+    #         trust_remote_code=True
+    #     )
+    #     model = AutoModelForCausalLM.from_pretrained(
+    #         model_path,
+    #         device_map=device,
+    #         torch_dtype=torch.bfloat16,
+    #         trust_remote_code=True,
+    #     )
+    #     model_adapter = getattr(model_adapters, model_config['model_adapter'])(model, tokenizer)
 
     if ',' in args.task_type:
         task_types = [item.strip() for item in args.task_type.split(',')]
