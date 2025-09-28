@@ -115,7 +115,7 @@ def main(args):
         raw_model_name = get_model_name_from_path(model_path)
         disable_torch_init()
         tokenizer, model, image_processor, context_len = load_pretrained_model(
-            model_path, None, raw_model_name, device_map=None, device=device,
+            model_path, None, raw_model_name, device_map=None, device=device, load_8bit=True,
         )
         model_adapter = getattr(model_adapters, model_config['model_adapter'])(
             model, tokenizer, context_len, image_processor, model_config['conv_mode']
