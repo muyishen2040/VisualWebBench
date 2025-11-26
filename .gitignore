@@ -175,3 +175,5 @@ test_ground.py
 /draw/
 test_openai.py
 test.py
+
+/agent_debug_images

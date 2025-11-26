@@ -6,3 +6,4 @@ from .qwen_vl_adapter import QwenVLAdapter
 # from .llava_adapter import LlavaAdapter
 from .qwen_hf_vl_adapter import QwenHFVLAdapter
 from .blip2_adapter import Blip2Adapter
+from .llavahf_adapter import LlavaHFAdapter

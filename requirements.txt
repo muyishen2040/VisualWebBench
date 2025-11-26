@@ -5,8 +5,9 @@ torch
 torchvision
 pillow
 rouge==1.0.1
-transformers==4.37.2
+transformers==4.44.2
 tiktoken
 openai
 anthropic
 google-generativeai
+tenacity

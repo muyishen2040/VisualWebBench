@@ -26,5 +26,6 @@ class BaseAdapter(ABC):
         query: str,
         image: str,
         task_type: str,
+        **kwargs
     ) -> str:
-        return self.generate(query, image, task_type)
+        return self.generate(query, image, task_type, **kwargs)
