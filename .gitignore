@@ -170,7 +170,7 @@ test_lmm.py
 *.ttf
 /test/
 test_ground.py
-*.ipynb
+# *.ipynb
 /output/
 /draw/
 test_openai.py
