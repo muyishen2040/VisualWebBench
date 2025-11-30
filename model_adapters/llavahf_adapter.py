@@ -786,50 +786,47 @@ class LlavaHFAdapter(BaseAdapter):
         Run on a cropped region (e.g. TL / TR / BL / BR).
 
         Asks the model to:
-          - find red, letter-labeled boxes,
-          - read / summarize the content INSIDE each red box.
+        - find red, letter-labeled boxes,
+        - read / summarize the content INSIDE each red box.
         """
         prompt = (
             "You are looking at ONE PART of a web page screenshot.\n"
             "In this dataset, CANDIDATE ACTION REGIONS are drawn as rectangles with a BRIGHT RED BORDER.\n"
-            "Each of these red rectangles has a SINGLE WHITE CAPITAL LETTER label (A, B, C, ...)\n"
+            "Each of these red rectangles has a SINGLE WHITE CAPITAL LETTER label (A–H)\n"
             "placed near one of its corners, usually with a dark or black highlight.\n\n"
             "Your tasks in THIS REGION ONLY:\n"
             "1. Find all red, letter-labeled rectangles that are at least partly visible.\n"
-            "2. For each letter label, describe what is INSIDE that red box and what its main purpose is\n"
-            "  \n\n"
+            "2. For each label, briefly describe what is inside that red box and its main purpose,\n"
+            "   especially in relation to the user's goal.\n\n"
             "Important rules:\n"
-            "- Only treat a letter as a label if it is a SINGLE capital letter (A–Z) directly associated\n"
+            "- Only treat a letter as a label if it is a SINGLE capital letter (A–H) directly associated\n"
             "  with a red rectangular border.\n"
             "- Do NOT invent labels that are not clearly visible in this region.\n"
             "- Ignore letters that are part of normal text, words, paragraphs, or logos.\n"
-            "- When you describe a label, focus on the UI element INSIDE the red box,\n"
+            "- When you describe a label, focus on the element INSIDE the red box,\n"
             "  not the surrounding page.\n"
             "- If a red box is partly cut off by the crop, still include it if you can see enough\n"
-            "  to guess its role.\n"
-            "- Never write descriptions like 'NONE', 'no label', or 'no content' for a label.\n"
-            "  If you truly see no red, letter-labeled rectangles at all, use the special output\n"
-            "  described below.\n\n"
+            "  to guess its role.\n\n"
             "You will later be asked to choose ONE label that best satisfies this instruction:\n"
             f"INSTRUCTION: {instruction}\n\n"
-            "Output format (MUST follow one of these exactly):\n"
-            "1) If you see one or more valid red, letter-labeled rectangles in this region,\n"
-            "   output ONE line per label, in any order:\n"
-            "      LETTER: short description (<= 10 words)\n"
-            "   where LETTER is a single capital letter A–Z with NO brackets or extra symbols.\n"
-            "   For example:\n"
-            "      A: a button that ....\n"
-            "   Each label must appear at most once.\n\n"
-            "2) If you do NOT see any red, letter-labeled rectangles in this region,\n"
-            "   output exactly one line with:\n"
-            "      NONE\n\n"
-            "Do NOT add any other text, explanations, or JSON.\n"
+            "OUTPUT FORMAT (STRICT — follow ONE of these exactly):\n"
+            "1) If you see one or more red, letter-labeled rectangles in THIS REGION:\n"
+            "   - Output ONE line per label, in any order.\n"
+            "   - EACH line MUST have this exact form:\n"
+            "   - START with a Letter in [ABCDEFGH], colon:, and a description"
+            "       <LETTER1>: short description (<= 10 words)\n"
+            "       <LETTER1>: short description\n"
+            "       <LETTER3>: short description\n"
+            "       ... \n"
+            "     etc.\n"
+            "   - The line MUST start with the LETTER, then a colon and a space.\n"
+            "   - Do NOT write words like 'LETTER:', 'Short description:', or 'Description:'.\n"
+            "   - Each label must appear at most once.\n\n"
             f"Current region tag: {region_tag}\n"
         )
 
-
-
         return self._llava_generate(prompt, region_image)
+
 
 
     def _parse_region_labels(
@@ -839,39 +836,105 @@ class LlavaHFAdapter(BaseAdapter):
     ) -> List[Dict[str, str]]:
         """
         Parse output of _scan_region_for_labels into a list of dicts:
-          { 'label': 'A', 'description': '...', 'region': 'TL' }
+        { 'label': 'A', 'description': '...', 'region': 'TL' }
+
+        Supports two patterns:
+        1) Preferred:  "A: some description"
+        2) Legacy:     "LETTER: A" on one line,
+                        then a line with "Short description:" or "Description:".
         """
         lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
         if not lines:
             return []
 
-        # If the model explicitly says NONE anywhere → treat as no labels
+        # Handle explicit NONE (single line or very short output)
+        if len(lines) == 1 and lines[0].upper() == "NONE":
+            return []
+
         joined = " ".join(lines).lower()
-        if "none" in joined and all(len(ln) <= 8 for ln in lines):
+        if "letter: none" in joined:
+            # e.g. "LETTER: NONE"
             return []
 
         results: List[Dict[str, str]] = []
+
+        # State for two-line pattern like:
+        #   LETTER: A
+        #   Short description: ...
+        pending_label: Optional[str] = None
+
         for ln in lines:
-            # Expect something like "A: description"
-            if ":" not in ln:
+            # 1) Preferred pattern: "A: description"
+            if ":" in ln:
+                left, right = ln.split(":", 1)
+                left = left.strip()
+                right = right.strip()
+
+                # single-letter label case, e.g. "A: description"
+                if len(left) == 1 and left.isalpha():
+                    label = left.upper()
+                    desc = right
+                    if desc:
+                        results.append(
+                            {
+                                "label": label,
+                                "description": desc,
+                                "region": region_tag,
+                            }
+                        )
+                    pending_label = None
+                    continue
+
+            # 2) Legacy pattern: "LETTER: A"
+            upper_ln = ln.upper()
+            if upper_ln.startswith("LETTER"):
+                # e.g. "LETTER: A" or 'LETTER: "A"'
+                if ":" in ln:
+                    _, rest = ln.split(":", 1)
+                    rest = rest.strip()
+                else:
+                    rest = ln
+
+                # Special case: LETTER: NONE
+                if "NONE" in rest.upper():
+                    return []
+
+                label_char = None
+                for ch in rest:
+                    if ch.isalpha():
+                        label_char = ch.upper()
+                        break
+                pending_label = label_char
                 continue
-            left, right = ln.split(":", 1)
-            left = left.strip()
-            right = right.strip()
-            if not left or len(left) != 1 or not left.isalpha():
-                continue
-            label = left.upper()
-            desc = right
-            if not desc:
-                continue
-            results.append(
-                {
-                    "label": label,
-                    "description": desc,
-                    "region": region_tag,
-                }
-            )
-        return results
+
+            # 3) If we have a pending label, look for description line
+            if pending_label is not None:
+                low = ln.lower()
+                if "description" in low:  # matches "Short description:" or "Description:"
+                    if ":" in ln:
+                        _, desc = ln.split(":", 1)
+                        desc = desc.strip()
+                    else:
+                        desc = ln.strip()
+                    if desc:
+                        results.append(
+                            {
+                                "label": pending_label,
+                                "description": desc,
+                                "region": region_tag,
+                            }
+                        )
+                    pending_label = None
+                    continue
+
+        # Optionally restrict to A–H (dataset constraint)
+        filtered = [
+            item for item in results
+            if "A" <= item["label"] <= "H"
+        ]
+
+        return filtered
+
 
     def _collect_action_candidates(
         self,
@@ -883,7 +946,7 @@ class LlavaHFAdapter(BaseAdapter):
         and aggregate descriptions per label.
 
         Returns:
-            candidates: dict[label] = merged_description
+            candidates: dict[label] = merged_description (possibly multiple snippets per label)
         """
         # 2x2 quadrants in normalized coords
         regions = {
@@ -907,16 +970,24 @@ class LlavaHFAdapter(BaseAdapter):
 
             for item in parsed:
                 lbl = item["label"]
-                desc = item["description"]
-                # If the label appears multiple times (e.g. overlapping crops),
-                # keep the longer / more informative description.
-                if lbl not in candidates or len(desc) > len(candidates[lbl]):
-                    candidates[lbl] = desc
+                # include region tag so we keep positional info too
+                desc_piece = f"[{tag}] {item['description'].strip()}"
+                if not desc_piece:
+                    continue
+
+                if lbl not in candidates:
+                    # first time we see this label → just store
+                    candidates[lbl] = desc_piece
+                else:
+                    # append new info if it's not already in the string
+                    if desc_piece not in candidates[lbl]:
+                        candidates[lbl] = candidates[lbl] + " | " + desc_piece
 
         print("[ActionGround] aggregated candidates:")
         for lbl, desc in candidates.items():
             print(f"  {lbl}: {desc!r}")
         return candidates
+
 
     def _select_action_label(
         self,
@@ -941,7 +1012,7 @@ class LlavaHFAdapter(BaseAdapter):
         prompt = (
             "You are looking at the FULL screenshot of a web page.\n"
             "Several UI regions on this page are highlighted by rectangles with a BRIGHT RED BORDER.\n"
-            "Each such red box has a SINGLE CAPITAL LETTER label (A, B, C, ...).\n\n"
+            "Each such red box has a SINGLE CAPITAL LETTER label (A, B, C, D, E, F, G, H).\n\n"
             "From previous steps, we extracted a short description of what is inside each\n"
             "red, letter-labeled box:\n"
             f"{labels_str}\n\n"
@@ -1228,6 +1299,8 @@ class LlavaHFAdapter(BaseAdapter):
                 task_type == ACTION_GROUND_TASK
                 and self.use_agent
             ):
+                self.agent.max_new_tokens = 128
+                self.max_new_tokens = 128
                 q = question if question is not None else query
                 return self._run_action_grounding(image, q)
 
